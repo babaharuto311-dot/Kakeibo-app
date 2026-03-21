@@ -72,13 +72,13 @@ body{display:flex;flex-direction:column;overflow:hidden}
 .tx-item{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid #e0ddd6}
 .tx-item:last-child{border-bottom:none}
 .tx-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.tx-dot.expense{background:#b83232}.tx-dot.income{background:#1e6b3c}
+.tx-dot.expense{background:#b83232}.tx-dot.income{background:#1e6b3c}.tx-dot.transfer{background:#2a52a0}
 .tx-info{flex:1;min-width:0}
 .tx-cat{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tx-meta{font-size:11px;color:#8a8680;margin-top:1px}
 .tx-r{display:flex;align-items:center;gap:4px;flex-shrink:0}
 .tx-amt{font-size:13px;font-weight:700;font-family:‘DM Mono’, monospace}
-.tx-amt.expense{color:#b83232}.tx-amt.income{color:#1e6b3c}
+.tx-amt.expense{color:#b83232}.tx-amt.income{color:#1e6b3c}.tx-amt.transfer{color:#2a52a0}
 .tx-del{background:none;border:none;cursor:pointer;font-size:13px;padding:4px;opacity:.25;transition:opacity .15s;color:#b83232}
 .tx-del:hover{opacity:1}
 
@@ -136,6 +136,7 @@ body{display:flex;flex-direction:column;overflow:hidden}
 .type-btn{padding:9px;border:1.5px solid #e0ddd6;border-radius:8px;font-size:13px;font-weight:700;font-family:‘Noto Sans JP’, sans-serif;cursor:pointer;background:none;transition:all .15s;color:#8a8680}
 .type-btn.exp{background:#fbefef;border-color:#b83232;color:#b83232}
 .type-btn.inc{background:#eaf4ef;border-color:#1e6b3c;color:#1e6b3c}
+.type-btn.trf{background:#eaf0fb;border-color:#2a52a0;color:#2a52a0}
 .bprimary{width:100%;padding:13px;background:#2c5f4a;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;font-family:‘Noto Sans JP’, sans-serif;cursor:pointer;transition:all .15s;margin-top:2px}
 .bprimary:active{opacity:.85}
 .bsec{width:100%;padding:10px;background:none;color:#8a8680;border:1.5px solid #e0ddd6;border-radius:8px;font-size:13px;font-weight:600;font-family:‘Noto Sans JP’, sans-serif;cursor:pointer;margin-top:7px}
@@ -254,6 +255,7 @@ body{display:flex;flex-direction:column;overflow:hidden}
       <div class="chip on" data-f="all">すべて</div>
       <div class="chip" data-f="expense">支出</div>
       <div class="chip" data-f="income">収入</div>
+      <div class="chip" data-f="transfer">振替</div>
     </div>
     <div class="card"><div class="card-bd" id="histTxList"></div></div>
   </div>
@@ -316,9 +318,10 @@ body{display:flex;flex-direction:column;overflow:hidden}
     <div class="sheet-bd">
       <div class="fg">
         <label class="fl">種類</label>
-        <div class="type-row">
-          <button class="type-btn exp" id="typExpBtn" data-v="expense">支出</button>
-          <button class="type-btn" id="typIncBtn" data-v="income">収入</button>
+        <div class="type-row" style="grid-template-columns:1fr 1fr 1fr">
+          <button class="type-btn exp" id="typExpBtn">支出</button>
+          <button class="type-btn" id="typIncBtn">収入</button>
+          <button class="type-btn" id="typTrfBtn">振替</button>
         </div>
         <input type="hidden" id="txTypeVal" value="expense">
       </div>
@@ -330,13 +333,17 @@ body{display:flex;flex-direction:column;overflow:hidden}
         <label class="fl">金額</label>
         <input type="number" class="fi" id="txAmt" placeholder="0" min="1" inputmode="numeric">
       </div>
-      <div class="fg">
+      <div class="fg" id="fgCat">
         <label class="fl">カテゴリ</label>
         <select class="fs" id="txCat"></select>
       </div>
       <div class="fg">
-        <label class="fl">アカウント</label>
+        <label class="fl" id="txAccLabel">アカウント</label>
         <select class="fs" id="txAcc"></select>
+      </div>
+      <div class="fg" id="fgTrfTo" style="display:none">
+        <label class="fl">振替先</label>
+        <select class="fs" id="txTrfTo"></select>
       </div>
       <div class="fg">
         <label class="fl">メモ（任意）</label>
@@ -446,10 +453,13 @@ function getBalance(k){
   const txs=S.tx();
   return init
     +txs.filter(t=>t.account===k&&t.type==='income').reduce((s,t)=>s+t.amount,0)
-    -txs.filter(t=>t.account===k&&t.type==='expense').reduce((s,t)=>s+t.amount,0);
+    -txs.filter(t=>t.account===k&&t.type==='expense').reduce((s,t)=>s+t.amount,0)
+    // 振替：振替元から出て、振替先に入る
+    -txs.filter(t=>t.account===k&&t.type==='transfer').reduce((s,t)=>s+t.amount,0)
+    +txs.filter(t=>t.trfTo===k&&t.type==='transfer').reduce((s,t)=>s+t.amount,0);
 }
 function monthSummary(y,m){
-  const txs=S.tx().filter(t=>sameMonth(t.date,y,m));
+  const txs=S.tx().filter(t=>sameMonth(t.date,y,m)&&t.type!=='transfer');
   return {
     exp: txs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0),
     inc: txs.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0),
@@ -501,16 +511,25 @@ function renderTxRows(elId, txs){
   S.cats().forEach(c=>catMap[c.key]=c);
   S.accs().forEach(a=>accMap[a.key]=a);
   el.innerHTML = txs.map(t=>{
-    const cat=catMap[t.category], acc=accMap[t.account];
+    const cat=catMap[t.category], acc=accMap[t.account], trfTo=accMap[t.trfTo];
     const ds = new Date(t.date).toLocaleDateString('ja-JP',{month:'short',day:'numeric',weekday:'short'});
+    const isTransfer = t.type==='transfer';
+    const label = isTransfer
+      ? `振替${t.memo?' · '+t.memo:''}`
+      : `${cat?cat.name:t.category}${t.memo?' · '+t.memo:''}`;
+    const metaAcc = isTransfer
+      ? `${acc?acc.name:t.account} → ${trfTo?trfTo.name:t.trfTo}`
+      : (acc?acc.name:t.account);
+    const amtClass = isTransfer ? 'transfer' : t.type;
+    const amtSign = isTransfer ? '⇄' : (t.type==='income'?'+':'-');
     return `<div class="tx-item">
-      <div class="tx-dot ${t.type}"></div>
+      <div class="tx-dot ${isTransfer?'transfer':t.type}"></div>
       <div class="tx-info">
-        <div class="tx-cat">${cat?cat.name:t.category}${t.memo?' · '+t.memo:''}</div>
-        <div class="tx-meta">${ds} · ${acc?acc.name:t.account}</div>
+        <div class="tx-cat">${label}</div>
+        <div class="tx-meta">${ds} · ${metaAcc}</div>
       </div>
       <div class="tx-r">
-        <div class="tx-amt ${t.type}">${t.type==='income'?'+':'-'}${fmt(t.amount)}</div>
+        <div class="tx-amt ${amtClass}">${amtSign}${fmt(t.amount)}</div>
         <button class="tx-del" data-id="${t.id}">✕</button>
       </div>
     </div>`;
@@ -710,16 +729,29 @@ function renderAnnualChart(){
 function openModal(id){ document.getElementById(id).classList.add('on'); }
 function closeAllModals(){ document.querySelectorAll('.overlay').forEach(m=>m.classList.remove('on')); }
 
+function setTxType(type){
+  document.getElementById('txTypeVal').value=type;
+  document.getElementById('typExpBtn').className='type-btn'+(type==='expense'?' exp':'');
+  document.getElementById('typIncBtn').className='type-btn'+(type==='income'?' inc':'');
+  document.getElementById('typTrfBtn').className='type-btn'+(type==='transfer'?' trf':'');
+  // カテゴリ：支出のみ表示
+  document.getElementById('fgCat').style.display = type==='expense'?'':'none';
+  // 振替先：振替のみ表示
+  document.getElementById('fgTrfTo').style.display = type==='transfer'?'':'none';
+  // アカウントラベル
+  document.getElementById('txAccLabel').textContent = type==='transfer'?'振替元':'アカウント';
+}
+
 function openTxModal(){
   const today=new Date().toISOString().split('T')[0];
   document.getElementById('txDate').value=today;
   document.getElementById('txAmt').value='';
   document.getElementById('txMemo').value='';
-  document.getElementById('txTypeVal').value='expense';
-  document.getElementById('typExpBtn').className='type-btn exp';
-  document.getElementById('typIncBtn').className='type-btn';
+  const accs=S.accs();
   document.getElementById('txCat').innerHTML=S.cats().map(c=>`<option value="${c.key}">${c.name}</option>`).join('');
-  document.getElementById('txAcc').innerHTML=S.accs().map(a=>`<option value="${a.key}">${a.name}</option>`).join('');
+  document.getElementById('txAcc').innerHTML=accs.map(a=>`<option value="${a.key}">${a.name}</option>`).join('');
+  document.getElementById('txTrfTo').innerHTML=accs.map(a=>`<option value="${a.key}">${a.name}</option>`).join('');
+  setTxType('expense');
   openModal('txModal');
 }
 function openBdgModal(k){
@@ -744,11 +776,15 @@ document.getElementById('saveTxBtn').addEventListener('click',()=>{
   const type=document.getElementById('txTypeVal').value;
   const date=document.getElementById('txDate').value;
   const amount=parseInt(document.getElementById('txAmt').value);
-  const category=document.getElementById('txCat').value;
+  const category=type==='expense'?document.getElementById('txCat').value:'';
   const account=document.getElementById('txAcc').value;
+  const trfTo=type==='transfer'?document.getElementById('txTrfTo').value:'';
   const memo=document.getElementById('txMemo').value.trim();
-  if(!date||!amount||amount<=0||!category||!account){showToast('必須項目を入力してください');return;}
-  const txs=S.tx(); txs.push({id:genKey(),type,date,amount,category,account,memo});
+  if(!date||!amount||amount<=0){showToast('必須項目を入力してください');return;}
+  if(type==='expense'&&!category){showToast('カテゴリを選択してください');return;}
+  if(type==='transfer'&&(!account||!trfTo)){showToast('振替元と振替先を選択してください');return;}
+  if(type==='transfer'&&account===trfTo){showToast('振替元と振替先が同じです');return;}
+  const txs=S.tx(); txs.push({id:genKey(),type,date,amount,category,account,trfTo,memo});
   S.sTx(txs); closeAllModals(); renderAll(); showToast('保存しました ✓');
 });
 
@@ -781,16 +817,9 @@ document.querySelectorAll('.close-modal').forEach(b=>b.addEventListener('click',
 document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)closeAllModals();}));
 
 // ---- TYPE TOGGLE ----
-document.getElementById('typExpBtn').addEventListener('click',()=>{
-  document.getElementById('txTypeVal').value='expense';
-  document.getElementById('typExpBtn').className='type-btn exp';
-  document.getElementById('typIncBtn').className='type-btn';
-});
-document.getElementById('typIncBtn').addEventListener('click',()=>{
-  document.getElementById('txTypeVal').value='income';
-  document.getElementById('typIncBtn').className='type-btn inc';
-  document.getElementById('typExpBtn').className='type-btn';
-});
+document.getElementById('typExpBtn').addEventListener('click',()=>setTxType('expense'));
+document.getElementById('typIncBtn').addEventListener('click',()=>setTxType('income'));
+document.getElementById('typTrfBtn').addEventListener('click',()=>setTxType('transfer'));
 
 // ---- TABS ----
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
