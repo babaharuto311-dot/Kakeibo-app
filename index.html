@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="color-scheme" content="light">
+<title>家計簿</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background-color:#f4f3ef !important;font-family:‘Noto Sans JP’, sans-serif;background:#f4f3ef;color:#18160f;-webkit-font-smoothing:antialiased}
+body{display:flex;flex-direction:column;overflow:hidden}
+
+/* HEADER */
+.hdr{background:#2c5f4a;color:#fff;padding:13px 18px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.hdr-title{font-size:17px;font-weight:700;letter-spacing:.03em}
+.hdr-month{font-size:13px;font-family:‘DM Mono’, monospace;opacity:.75}
+
+/* TABS */
+.tabs{display:flex;background:#ffffff;border-bottom:1px solid #e0ddd6;flex-shrink:0}
+.tab{flex:1;padding:11px 4px;font-size:11px;font-weight:700;font-family:‘Noto Sans JP’, sans-serif;border:none;background:none;cursor:pointer;color:#8a8680;border-bottom:2px solid transparent;letter-spacing:.04em;transition:all .18s}
+.tab.on{color:#2c5f4a;border-bottom-color:#2c5f4a}
+
+/* CONTAINER */
+.wrap{flex:1;overflow-y:auto;padding-bottom:80px}
+.screen{display:none}.screen.on{display:block}
+
+/* CARD */
+.card{background:#ffffff;margin:10px 12px;border-radius:12px;border:1px solid #e0ddd6;box-shadow:0 1px 2px rgba(0,0,0,0.06), 0 3px 10px rgba(0,0,0,0.04);overflow:hidden}
+.card-hd{padding:13px 14px 0;display:flex;justify-content:space-between;align-items:center}
+.card-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#8a8680}
+.card-bd{padding:10px 14px 14px}
+
+/* SUMMARY */
+.sum-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 12px 0}
+.sum-card{background:#ffffff;border-radius:12px;border:1px solid #e0ddd6;padding:12px 14px;box-shadow:0 1px 2px rgba(0,0,0,0.06), 0 3px 10px rgba(0,0,0,0.04)}
+.sum-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#8a8680;margin-bottom:5px}
+.sum-val{font-size:21px;font-weight:700;font-family:‘DM Mono’, monospace;line-height:1}
+.sum-val.exp{color:#b83232}.sum-val.inc{color:#1e6b3c}
+.sum-sub{font-size:10px;color:#8a8680;margin-top:3px;font-family:‘DM Mono’, monospace}
+
+/* ACCOUNTS ROW */
+.acc-row{display:flex;gap:8px;overflow-x:auto;padding:10px 12px 4px;scrollbar-width:none}
+.acc-row::-webkit-scrollbar{display:none}
+.acc-chip{background:#2c5f4a;color:#fff;border-radius:8px;padding:9px 13px;min-width:100px;flex-shrink:0}
+.acc-chip-name{font-size:10px;opacity:.75;margin-bottom:3px;font-weight:600;letter-spacing:.04em}
+.acc-chip-bal{font-size:16px;font-weight:700;font-family:‘DM Mono’, monospace}
+
+/* MONTH NAV */
+.mnav{display:flex;align-items:center;justify-content:space-between;padding:10px 16px 4px}
+.mnav-btn{background:none;border:none;cursor:pointer;font-size:20px;color:#8a8680;padding:2px 8px;border-radius:6px;line-height:1;transition:background .15s}
+.mnav-btn:active{background:#eeece7}
+.mnav-lbl{font-size:14px;font-weight:700;font-family:‘DM Mono’, monospace}
+
+/* BUDGET */
+.bdg-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #e0ddd6}
+.bdg-row:last-child{border-bottom:none}
+.bdg-info{flex:1;min-width:0}
+.bdg-name{font-size:13px;font-weight:600}
+.bdg-track{display:flex;align-items:center;margin-top:4px;gap:8px}
+.bdg-bar-w{flex:1;height:5px;background:#eeece7;border-radius:3px;overflow:hidden}
+.bdg-bar{height:100%;border-radius:3px;transition:width .4s ease;background:#2c5f4a}
+.bdg-bar.warn{background:#a07800}.bdg-bar.over{background:#b83232}
+.bdg-rem{font-size:11px;font-family:‘DM Mono’, monospace;color:#8a8680;white-space:nowrap}
+.bdg-rem.over{color:#b83232}
+.bdg-acts{display:flex;gap:2px;flex-shrink:0}
+
+/* TX */
+.tx-item{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid #e0ddd6}
+.tx-item:last-child{border-bottom:none}
+.tx-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.tx-dot.expense{background:#b83232}.tx-dot.income{background:#1e6b3c}
+.tx-info{flex:1;min-width:0}
+.tx-cat{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx-meta{font-size:11px;color:#8a8680;margin-top:1px}
+.tx-r{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.tx-amt{font-size:13px;font-weight:700;font-family:‘DM Mono’, monospace}
+.tx-amt.expense{color:#b83232}.tx-amt.income{color:#1e6b3c}
+.tx-del{background:none;border:none;cursor:pointer;font-size:13px;padding:4px;opacity:.25;transition:opacity .15s;color:#b83232}
+.tx-del:hover{opacity:1}
+
+/* FILTER CHIPS */
+.chips{display:flex;gap:6px;padding:8px 12px;overflow-x:auto;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{padding:4px 11px;border-radius:100px;font-size:11px;font-weight:700;border:1.5px solid #e0ddd6;background:#ffffff;color:#8a8680;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s}
+.chip.on{background:#2c5f4a;border-color:#2c5f4a;color:#fff}
+
+/* ICON BTN */
+.ibtn{background:none;border:none;cursor:pointer;font-size:13px;padding:5px 6px;border-radius:5px;opacity:.45;transition:opacity .15s;font-family:‘Noto Sans JP’, sans-serif}
+.ibtn:hover{opacity:1;background:#eeece7}
+
+/* SETTINGS */
+.set-sec{margin:10px 12px}
+.set-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#8a8680;margin-bottom:5px;padding:0 2px}
+.set-card{background:#ffffff;border-radius:12px;border:1px solid #e0ddd6;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,0.06), 0 3px 10px rgba(0,0,0,0.04)}
+.set-row{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;border-bottom:1px solid #e0ddd6;gap:8px}
+.set-row:last-child{border-bottom:none}
+.set-l{flex:1;min-width:0}
+.set-name{font-size:13px;font-weight:600}
+.set-sub{font-size:11px;color:#8a8680;margin-top:1px;font-family:‘DM Mono’, monospace}
+.set-acts{display:flex;gap:2px}
+.add-btn{display:flex;align-items:center;gap:6px;padding:11px 13px;background:#eeece7;border:none;cursor:pointer;font-size:13px;font-family:‘Noto Sans JP’, sans-serif;color:#2c5f4a;font-weight:700;width:100%;border-radius:12px;margin-top:7px;transition:background .15s}
+.add-btn:active{background:#e0ddd6}
+
+/* CHARTS */
+.chart-wrap{position:relative;width:100%;margin:0 auto}
+.chart-tabs{display:flex;gap:4px;padding:4px 14px 0}
+.ctab{padding:4px 10px;font-size:11px;font-weight:700;border:1.5px solid #e0ddd6;border-radius:100px;background:none;cursor:pointer;font-family:‘Noto Sans JP’, sans-serif;color:#8a8680;transition:all .15s}
+.ctab.on{background:#2c5f4a;border-color:#2c5f4a;color:#fff}
+
+/* FAB */
+.fab{position:fixed;bottom:22px;right:18px;width:50px;height:50px;background:#2c5f4a;color:#fff;border:none;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 14px rgba(44,95,74,.38);display:flex;align-items:center;justify-content:center;transition:transform .15s;z-index:300}
+.fab:active{transform:scale(.92)}
+
+/* MODAL */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:500;align-items:flex-end}
+.overlay.on{display:flex}
+.sheet{width:100%;background:#ffffff;border-radius:18px 18px 0 0;padding:0 0 28px;max-height:92vh;overflow-y:auto;animation:up .26s cubic-bezier(.32,.72,0,1)}
+@keyframes up{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.sheet-handle{width:34px;height:4px;background:#e0ddd6;border-radius:2px;margin:10px auto 0}
+.sheet-hd{display:flex;justify-content:space-between;align-items:center;padding:14px 18px 10px;border-bottom:1px solid #e0ddd6}
+.sheet-title{font-size:16px;font-weight:700}
+.sheet-x{background:#eeece7;border:none;border-radius:50%;width:28px;height:28px;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#8a8680}
+.sheet-bd{padding:14px 18px}
+
+/* FORM */
+.fg{margin-bottom:12px}
+.fl{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#8a8680;margin-bottom:5px}
+.fi,.fs{width:100%;padding:10px 11px;border:1.5px solid #e0ddd6;border-radius:8px;font-size:15px;font-family:‘Noto Sans JP’, sans-serif;background:#ffffff;color:#18160f;transition:border-color .15s;appearance:none}
+.fi:focus,.fs:focus{outline:none;border-color:#2c5f4a;box-shadow:0 0 0 3px rgba(44,95,74,.1)}
+.fs{background-image:url(“data:image/svg+xml,%3Csvg xmlns=‘http://www.w3.org/2000/svg’ width=‘11’ height=‘7’ viewBox=‘0 0 11 7’%3E%3Cpath d=‘M1 1l4.5 4.5L10 1’ stroke=’%238a8680’ stroke-width=‘1.5’ fill=‘none’ stroke-linecap=‘round’/%3E%3C/svg%3E”);background-repeat:no-repeat;background-position:right 11px center;padding-right:30px}
+.type-row{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.type-btn{padding:9px;border:1.5px solid #e0ddd6;border-radius:8px;font-size:13px;font-weight:700;font-family:‘Noto Sans JP’, sans-serif;cursor:pointer;background:none;transition:all .15s;color:#8a8680}
+.type-btn.exp{background:#fbefef;border-color:#b83232;color:#b83232}
+.type-btn.inc{background:#eaf4ef;border-color:#1e6b3c;color:#1e6b3c}
+.bprimary{width:100%;padding:13px;background:#2c5f4a;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;font-family:‘Noto Sans JP’, sans-serif;cursor:pointer;transition:all .15s;margin-top:2px}
+.bprimary:active{opacity:.85}
+.bsec{width:100%;padding:10px;background:none;color:#8a8680;border:1.5px solid #e0ddd6;border-radius:8px;font-size:13px;font-weight:600;font-family:‘Noto Sans JP’, sans-serif;cursor:pointer;margin-top:7px}
+
+/* EMPTY */
+.empty{text-align:center;padding:28px 16px;color:#8a8680}
+.empty-icon{font-size:36px;margin-bottom:7px}
+.empty-text{font-size:13px}
+
+/* TOAST */
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#18160f;color:#fff;padding:9px 16px;border-radius:100px;font-size:12px;font-weight:500;z-index:1000;white-space:nowrap;box-shadow:0 3px 14px rgba(0,0,0,.2);animation:tin .22s ease}
+@keyframes tin{from{opacity:0;transform:translateX(-50%) translateY(6px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+
+/* NOTE */
+.note{font-size:11px;color:#8a8680;padding:6px 14px 10px;line-height:1.5}
+</style>
+
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-title">家計簿</div>
+  <div class="hdr-month" id="hdrMonth"></div>
+</div>
+<div class="tabs">
+  <button class="tab on" data-tab="home">ホーム</button>
+  <button class="tab" data-tab="graph">グラフ</button>
+  <button class="tab" data-tab="history">履歴</button>
+  <button class="tab" data-tab="budget">予算</button>
+  <button class="tab" data-tab="settings">設定</button>
+</div>
+
+<div class="wrap">
+
+  <!-- HOME -->
+
+  <div class="screen on" id="tab-home">
+    <div class="mnav">
+      <button class="mnav-btn" id="prevM">‹</button>
+      <div class="mnav-lbl" id="homeMLabel"></div>
+      <button class="mnav-btn" id="nextM">›</button>
+    </div>
+    <div class="sum-grid">
+      <div class="sum-card">
+        <div class="sum-lbl">今月の支出</div>
+        <div class="sum-val exp" id="sumExp">¥0</div>
+        <div class="sum-sub" id="sumExpCnt">0件</div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-lbl">今月の収入</div>
+        <div class="sum-val inc" id="sumInc">¥0</div>
+        <div class="sum-sub" id="sumIncCnt">0件</div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:8px">
+      <div class="card-hd"><div class="card-label">資産残高</div></div>
+      <div class="acc-row" id="accRow"></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><div class="card-label">予算状況</div></div>
+      <div class="card-bd" id="homeBdgList"></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><div class="card-label">最近の取引</div></div>
+      <div class="card-bd" id="homeRecentTx"></div>
+    </div>
+  </div>
+
+  <!-- GRAPH -->
+
+  <div class="screen" id="tab-graph">
+    <div class="mnav">
+      <button class="mnav-btn" id="gPrevM">‹</button>
+      <div class="mnav-lbl" id="gMLabel"></div>
+      <button class="mnav-btn" id="gNextM">›</button>
+    </div>
+    <div class="card">
+      <div class="card-hd">
+        <div class="card-label">月別推移（12ヶ月）</div>
+      </div>
+      <div class="card-bd">
+        <div class="chart-wrap" style="height:200px"><canvas id="barChart"></canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-hd">
+        <div class="card-label">カテゴリ別内訳</div>
+        <div class="chart-tabs">
+          <button class="ctab on" data-ctype="expense" id="ctExpBtn">支出</button>
+          <button class="ctab" data-ctype="income" id="ctIncBtn">収入</button>
+        </div>
+      </div>
+      <div class="card-bd" style="display:flex;align-items:center;gap:12px">
+        <div class="chart-wrap" style="height:160px;width:160px;flex-shrink:0"><canvas id="pieChart"></canvas></div>
+        <div id="pieLegend" style="flex:1;min-width:0"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><div class="card-label">年間サマリー</div></div>
+      <div class="card-bd">
+        <div class="chart-wrap" style="height:180px"><canvas id="annualChart"></canvas></div>
+      </div>
+      <div id="annualSummaryNote" class="note"></div>
+    </div>
+  </div>
+
+  <!-- HISTORY -->
+
+  <div class="screen" id="tab-history">
+    <div class="mnav">
+      <button class="mnav-btn" id="hPrevM">‹</button>
+      <div class="mnav-lbl" id="hMLabel"></div>
+      <button class="mnav-btn" id="hNextM">›</button>
+    </div>
+    <div class="chips" id="filterChips">
+      <div class="chip on" data-f="all">すべて</div>
+      <div class="chip" data-f="expense">支出</div>
+      <div class="chip" data-f="income">収入</div>
+    </div>
+    <div class="card"><div class="card-bd" id="histTxList"></div></div>
+  </div>
+
+  <!-- BUDGET -->
+
+  <div class="screen" id="tab-budget">
+    <div class="card" style="margin-top:12px">
+      <div class="card-hd"><div class="card-label">カテゴリ別予算</div></div>
+      <div class="card-bd" id="bdgSettingList"></div>
+    </div>
+    <button class="add-btn" id="addBdgBtn">＋ カテゴリを追加</button>
+  </div>
+
+  <!-- SETTINGS -->
+
+  <div class="screen" id="tab-settings">
+    <div class="set-sec" style="margin-top:12px">
+      <div class="set-lbl">財布・アカウント</div>
+      <div class="set-card" id="accSettingList"></div>
+      <button class="add-btn" id="addAccBtn">＋ 財布を追加</button>
+    </div>
+    <div class="set-sec">
+      <div class="set-lbl">繰り越し残高について</div>
+      <div class="set-card">
+        <div class="set-row">
+          <div class="set-l">
+            <div class="set-name" style="font-size:12px;font-weight:500;color:#8a8680;line-height:1.6">財布ごとの「繰り越し残高（初期残高）」は、財布の編集画面から設定できます。使い始める前の手持ち金額を入力してください。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="set-sec">
+      <div class="set-lbl">データ管理</div>
+      <div class="set-card">
+        <div class="set-row">
+          <div class="set-l">
+            <div class="set-name">取引データを全削除</div>
+            <div class="set-sub">履歴をすべて消去します</div>
+          </div>
+          <button class="ibtn" id="clearBtn" style="font-size:14px;opacity:.6">削除</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<button class="fab" id="fab">＋</button>
+
+<!-- TX MODAL -->
+
+<div class="overlay" id="txModal">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-hd">
+      <div class="sheet-title">取引を追加</div>
+      <button class="sheet-x close-modal">✕</button>
+    </div>
+    <div class="sheet-bd">
+      <div class="fg">
+        <label class="fl">種類</label>
+        <div class="type-row">
+          <button class="type-btn exp" id="typExpBtn" data-v="expense">支出</button>
+          <button class="type-btn" id="typIncBtn" data-v="income">収入</button>
+        </div>
+        <input type="hidden" id="txTypeVal" value="expense">
+      </div>
+      <div class="fg">
+        <label class="fl">日付</label>
+        <input type="date" class="fi" id="txDate">
+      </div>
+      <div class="fg">
+        <label class="fl">金額</label>
+        <input type="number" class="fi" id="txAmt" placeholder="0" min="1" inputmode="numeric">
+      </div>
+      <div class="fg">
+        <label class="fl">カテゴリ</label>
+        <select class="fs" id="txCat"></select>
+      </div>
+      <div class="fg">
+        <label class="fl">アカウント</label>
+        <select class="fs" id="txAcc"></select>
+      </div>
+      <div class="fg">
+        <label class="fl">メモ（任意）</label>
+        <input type="text" class="fi" id="txMemo" placeholder="例：スーパーで買い物">
+      </div>
+      <button class="bprimary" id="saveTxBtn">保存する</button>
+      <button class="bsec close-modal">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<!-- BUDGET MODAL -->
+
+<div class="overlay" id="bdgModal">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-hd">
+      <div class="sheet-title" id="bdgModalTitle">予算カテゴリを追加</div>
+      <button class="sheet-x close-modal">✕</button>
+    </div>
+    <div class="sheet-bd">
+      <div class="fg">
+        <label class="fl">カテゴリ名</label>
+        <input type="text" class="fi" id="bdgName" placeholder="例：食費">
+      </div>
+      <div class="fg">
+        <label class="fl">月間予算（円）</label>
+        <input type="number" class="fi" id="bdgAmt" placeholder="0（未設定）" min="0" inputmode="numeric">
+      </div>
+      <input type="hidden" id="bdgEditKey">
+      <button class="bprimary" id="saveBdgBtn">保存する</button>
+      <button class="bsec close-modal">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<!-- ACCOUNT MODAL -->
+
+<div class="overlay" id="accModal">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-hd">
+      <div class="sheet-title" id="accModalTitle">財布を追加</div>
+      <button class="sheet-x close-modal">✕</button>
+    </div>
+    <div class="sheet-bd">
+      <div class="fg">
+        <label class="fl">財布の名前</label>
+        <input type="text" class="fi" id="accName" placeholder="例：財布、PayPay">
+      </div>
+      <div class="fg">
+        <label class="fl">繰り越し残高（初期残高）</label>
+        <input type="number" class="fi" id="accInit" placeholder="0" min="0" inputmode="numeric">
+        <div style="font-size:11px;color:#8a8680;margin-top:4px">使い始め前の手持ち金額を入力してください</div>
+      </div>
+      <input type="hidden" id="accEditKey">
+      <button class="bprimary" id="saveAccBtn">保存する</button>
+      <button class="bsec close-modal">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- DEFAULT DATA ----
+const DEF_CATS = [
+  {key:'food',  name:'食費',   budget:30000},
+  {key:'trans', name:'交通費', budget:10000},
+  {key:'fun',   name:'娯楽',   budget:15000},
+  {key:'health',name:'医療',   budget:5000 },
+  {key:'other', name:'その他', budget:0    }
+];
+const DEF_ACCS = [
+  {key:'wallet', name:'財布',  initialBalance:0},
+  {key:'paypay', name:'PayPay',initialBalance:0},
+  {key:'bank',   name:'貯金',  initialBalance:0}
+];
+
+// ---- STORAGE ----
+const S = {
+  _g: k => JSON.parse(localStorage.getItem(k)||'null'),
+  _s: (k,v) => localStorage.setItem(k,JSON.stringify(v)),
+  tx:   ()  => S._g('kk2_tx')   || [],
+  cats: ()  => S._g('kk2_cats') || DEF_CATS,
+  accs: ()  => S._g('kk2_accs') || DEF_ACCS,
+  sTx:  v   => S._s('kk2_tx',v),
+  sCats:v   => S._s('kk2_cats',v),
+  sAccs:v   => S._s('kk2_accs',v),
+  init(){ if(!S._g('kk2_cats'))S.sCats(DEF_CATS); if(!S._g('kk2_accs'))S.sAccs(DEF_ACCS); if(!S._g('kk2_tx'))S.sTx([]); }
+};
+
+// ---- STATE ----
+let vY = new Date().getFullYear(), vM = new Date().getMonth();
+let hY = vY, hM = vM, gY = vY, gM = vM;
+let hFilter = 'all', chartType = 'expense';
+let barChartInst=null, pieChartInst=null, annualChartInst=null;
+
+// ---- HELPERS ----
+const fmt = n => '¥'+Math.abs(n).toLocaleString('ja-JP');
+const ym  = (y,m) => `${y}年${m+1}月`;
+const genKey = () => Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+function sameMonth(ds,y,m){ const d=new Date(ds); return d.getFullYear()===y&&d.getMonth()===m; }
+function sameYear(ds,y){ return new Date(ds).getFullYear()===y; }
+
+function getBalance(k){
+  const a=S.accs().find(x=>x.key===k);
+  const init=a?(a.initialBalance||0):0;
+  const txs=S.tx();
+  return init
+    +txs.filter(t=>t.account===k&&t.type==='income').reduce((s,t)=>s+t.amount,0)
+    -txs.filter(t=>t.account===k&&t.type==='expense').reduce((s,t)=>s+t.amount,0);
+}
+function monthSummary(y,m){
+  const txs=S.tx().filter(t=>sameMonth(t.date,y,m));
+  return {
+    exp: txs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0),
+    inc: txs.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0),
+    expCnt: txs.filter(t=>t.type==='expense').length,
+    incCnt: txs.filter(t=>t.type==='income').length
+  };
+}
+function catExpense(k,y,m){
+  return S.tx().filter(t=>t.type==='expense'&&t.category===k&&sameMonth(t.date,y,m))
+    .reduce((s,t)=>s+t.amount,0);
+}
+function catIncome(k,y,m){
+  return S.tx().filter(t=>t.type==='income'&&t.category===k&&sameMonth(t.date,y,m))
+    .reduce((s,t)=>s+t.amount,0);
+}
+
+// ---- CHART COLORS ----
+const COLORS = ['#2c5f4a','#5b9a7f','#97c4b0','#b8d8cc','#dceee8','#c0392b','#e07060','#f0a090','#1a4a6b','#4a7fa0'];
+
+// ---- RENDER HOME ----
+function renderHome(){
+  document.getElementById('homeMLabel').textContent = ym(vY,vM);
+  document.getElementById('hdrMonth').textContent = ym(vY,vM);
+  const {exp,inc,expCnt,incCnt} = monthSummary(vY,vM);
+  document.getElementById('sumExp').textContent = fmt(exp);
+  document.getElementById('sumInc').textContent = fmt(inc);
+  document.getElementById('sumExpCnt').textContent = expCnt+'件';
+  document.getElementById('sumIncCnt').textContent = incCnt+'件';
+
+  // accounts
+  document.getElementById('accRow').innerHTML = S.accs().map(a=>`
+    <div class="acc-chip">
+      <div class="acc-chip-name">${a.name}</div>
+      <div class="acc-chip-bal">${fmt(getBalance(a.key))}</div>
+    </div>`).join('');
+
+  renderBudgetRows('homeBdgList', vY, vM, false);
+
+  const recent = [...S.tx()].filter(t=>sameMonth(t.date,vY,vM))
+    .sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
+  renderTxRows('homeRecentTx', recent);
+}
+
+// ---- RENDER TX ROWS ----
+function renderTxRows(elId, txs){
+  const el = document.getElementById(elId);
+  if(!txs.length){ el.innerHTML='<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">取引がありません</div></div>'; return; }
+  const catMap={}, accMap={};
+  S.cats().forEach(c=>catMap[c.key]=c);
+  S.accs().forEach(a=>accMap[a.key]=a);
+  el.innerHTML = txs.map(t=>{
+    const cat=catMap[t.category], acc=accMap[t.account];
+    const ds = new Date(t.date).toLocaleDateString('ja-JP',{month:'short',day:'numeric',weekday:'short'});
+    return `<div class="tx-item">
+      <div class="tx-dot ${t.type}"></div>
+      <div class="tx-info">
+        <div class="tx-cat">${cat?cat.name:t.category}${t.memo?' · '+t.memo:''}</div>
+        <div class="tx-meta">${ds} · ${acc?acc.name:t.account}</div>
+      </div>
+      <div class="tx-r">
+        <div class="tx-amt ${t.type}">${t.type==='income'?'+':'-'}${fmt(t.amount)}</div>
+        <button class="tx-del" data-id="${t.id}">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+  el.querySelectorAll('.tx-del').forEach(b=>b.addEventListener('click',()=>{
+    if(confirm('この取引を削除しますか？')){
+      S.sTx(S.tx().filter(t=>t.id!==b.dataset.id));
+      renderAll(); showToast('削除しました');
+    }
+  }));
+}
+
+// ---- RENDER HISTORY ----
+function renderHistory(){
+  document.getElementById('hMLabel').textContent = ym(hY,hM);
+  let txs = [...S.tx()].filter(t=>sameMonth(t.date,hY,hM)).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  if(hFilter!=='all') txs=txs.filter(t=>t.type===hFilter);
+  renderTxRows('histTxList', txs);
+}
+
+// ---- RENDER BUDGET ROWS ----
+function renderBudgetRows(elId, y, m, withActions){
+  const el=document.getElementById(elId);
+  const cats=S.cats();
+  if(!cats.length){ el.innerHTML='<div class="empty"><div class="empty-text">カテゴリがありません</div></div>'; return; }
+  el.innerHTML = cats.map(c=>{
+    const spent=catExpense(c.key,y,m), budget=c.budget||0;
+    const pct=budget>0?Math.min(spent/budget*100,100):0;
+    const rem=budget-spent;
+    const barCls=pct>=100?'over':pct>=80?'warn':'';
+    const remCls=rem<0?'over':'';
+    const remText=budget>0?(rem>=0?`残 ${fmt(rem)}`:`超過 ${fmt(-rem)}`):fmt(spent);
+    const acts=withActions?`<div class="bdg-acts">
+      <button class="ibtn edit-bdg" data-k="${c.key}">編集</button>
+      <button class="ibtn del-bdg" data-k="${c.key}">削除</button>
+    </div>`:'';
+    return `<div class="bdg-row">
+      <div class="bdg-info">
+        <div class="bdg-name">${c.name}</div>
+        <div class="bdg-track">
+          <div class="bdg-bar-w"><div class="bdg-bar ${barCls}" style="width:${pct}%"></div></div>
+          <div class="bdg-rem ${remCls}">${remText}</div>
+        </div>
+      </div>${acts}
+    </div>`;
+  }).join('');
+  if(withActions){
+    el.querySelectorAll('.edit-bdg').forEach(b=>b.addEventListener('click',()=>openBdgModal(b.dataset.k)));
+    el.querySelectorAll('.del-bdg').forEach(b=>b.addEventListener('click',()=>{
+      if(confirm('このカテゴリを削除しますか？')){
+        S.sCats(S.cats().filter(c=>c.key!==b.dataset.k));
+        renderBudgetSettings(); renderAll(); showToast('削除しました');
+      }
+    }));
+  }
+}
+
+// ---- RENDER BUDGET SETTINGS ----
+function renderBudgetSettings(){
+  renderBudgetRows('bdgSettingList', vY, vM, true);
+}
+
+// ---- RENDER ACCOUNT SETTINGS ----
+function renderAccSettings(){
+  const el=document.getElementById('accSettingList');
+  el.innerHTML=S.accs().map(a=>`
+    <div class="set-row">
+      <div class="set-l">
+        <div class="set-name">${a.name}</div>
+        <div class="set-sub">残高 ${fmt(getBalance(a.key))} ／ 繰越 ${fmt(a.initialBalance||0)}</div>
+      </div>
+      <div class="set-acts">
+        <button class="ibtn edit-acc" data-k="${a.key}">編集</button>
+        <button class="ibtn del-acc" data-k="${a.key}">削除</button>
+      </div>
+    </div>`).join('');
+  el.querySelectorAll('.edit-acc').forEach(b=>b.addEventListener('click',()=>openAccModal(b.dataset.k)));
+  el.querySelectorAll('.del-acc').forEach(b=>b.addEventListener('click',()=>{
+    if(S.accs().length<=1){showToast('最低1つ必要です');return;}
+    if(confirm('この財布を削除しますか？')){
+      S.sAccs(S.accs().filter(a=>a.key!==b.dataset.k));
+      renderAccSettings(); renderAll(); showToast('削除しました');
+    }
+  }));
+}
+
+// ---- CHARTS ----
+const CHART_FONT = { family: "'Noto Sans JP', sans-serif", size: 10 };
+
+function renderCharts(){
+  document.getElementById('gMLabel').textContent = ym(gY,gM);
+  renderBarChart();
+  renderPieChart();
+  renderAnnualChart();
+}
+
+function renderBarChart(){
+  const labels=[], expData=[], incData=[];
+  for(let i=11;i>=0;i--){
+    let y=gY, m=gM-i;
+    while(m<0){m+=12;y--;}
+    labels.push(`${m+1}月`);
+    const s=monthSummary(y,m);
+    expData.push(s.exp); incData.push(s.inc);
+  }
+  if(barChartInst) barChartInst.destroy();
+  const ctx=document.getElementById('barChart').getContext('2d');
+  barChartInst=new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels,
+      datasets:[
+        {label:'支出',data:expData,backgroundColor:'rgba(184,50,50,.75)',borderRadius:3},
+        {label:'収入',data:incData,backgroundColor:'rgba(30,107,60,.65)',borderRadius:3}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{font:CHART_FONT,boxWidth:10}}},
+      scales:{
+        x:{ticks:{font:CHART_FONT},grid:{display:false}},
+        y:{ticks:{font:CHART_FONT,callback:v=>'¥'+v.toLocaleString()},grid:{color:'#eeece7'}}
+      }
+    }
+  });
+}
+
+function renderPieChart(){
+  const cats=S.cats();
+  const data=cats.map(c=>chartType==='expense'?catExpense(c.key,gY,gM):catIncome(c.key,gY,gM));
+  const total=data.reduce((s,v)=>s+v,0);
+  const filtered=cats.map((c,i)=>({name:c.name,val:data[i]})).filter(x=>x.val>0);
+
+  if(pieChartInst) pieChartInst.destroy();
+  const ctx=document.getElementById('pieChart').getContext('2d');
+
+  if(!filtered.length){
+    ctx.clearRect(0,0,300,300);
+    document.getElementById('pieLegend').innerHTML='<div style="font-size:12px;color:#8a8680">データなし</div>';
+    return;
+  }
+
+  pieChartInst=new Chart(ctx,{
+    type:'doughnut',
+    data:{
+      labels:filtered.map(x=>x.name),
+      datasets:[{data:filtered.map(x=>x.val),backgroundColor:COLORS.slice(0,filtered.length),borderWidth:2,borderColor:'#fff'}]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,cutout:'62%',
+      plugins:{legend:{display:false}}
+    }
+  });
+
+  document.getElementById('pieLegend').innerHTML=filtered.map((x,i)=>`
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+      <div style="width:8px;height:8px;border-radius:2px;background:${COLORS[i]};flex-shrink:0"></div>
+      <div style="font-size:11px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x.name}</div>
+      <div style="font-size:11px;font-family:'DM Mono', monospace;color:#8a8680;flex-shrink:0">${total>0?Math.round(x.val/total*100):0}%</div>
+    </div>`).join('');
+}
+
+function renderAnnualChart(){
+  const months=['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  const expData=[], incData=[];
+  let totalExp=0, totalInc=0;
+  for(let m=0;m<12;m++){
+    const s=monthSummary(gY,m);
+    expData.push(s.exp); incData.push(s.inc);
+    totalExp+=s.exp; totalInc+=s.inc;
+  }
+  if(annualChartInst) annualChartInst.destroy();
+  const ctx=document.getElementById('annualChart').getContext('2d');
+  annualChartInst=new Chart(ctx,{
+    type:'line',
+    data:{
+      labels:months,
+      datasets:[
+        {label:'支出',data:expData,borderColor:'#b83232',backgroundColor:'rgba(184,50,50,.08)',tension:.35,fill:true,pointRadius:3},
+        {label:'収入',data:incData,borderColor:'#1e6b3c',backgroundColor:'rgba(30,107,60,.07)',tension:.35,fill:true,pointRadius:3}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{font:CHART_FONT,boxWidth:10}}},
+      scales:{
+        x:{ticks:{font:CHART_FONT},grid:{display:false}},
+        y:{ticks:{font:CHART_FONT,callback:v=>'¥'+v.toLocaleString()},grid:{color:'#eeece7'}}
+      }
+    }
+  });
+  document.getElementById('annualSummaryNote').textContent =
+    `${gY}年合計：支出 ${fmt(totalExp)} ／ 収入 ${fmt(totalInc)} ／ 収支 ${fmt(totalInc-totalExp)}`;
+}
+
+// ---- MODALS ----
+function openModal(id){ document.getElementById(id).classList.add('on'); }
+function closeAllModals(){ document.querySelectorAll('.overlay').forEach(m=>m.classList.remove('on')); }
+
+function openTxModal(){
+  const today=new Date().toISOString().split('T')[0];
+  document.getElementById('txDate').value=today;
+  document.getElementById('txAmt').value='';
+  document.getElementById('txMemo').value='';
+  document.getElementById('txTypeVal').value='expense';
+  document.getElementById('typExpBtn').className='type-btn exp';
+  document.getElementById('typIncBtn').className='type-btn';
+  document.getElementById('txCat').innerHTML=S.cats().map(c=>`<option value="${c.key}">${c.name}</option>`).join('');
+  document.getElementById('txAcc').innerHTML=S.accs().map(a=>`<option value="${a.key}">${a.name}</option>`).join('');
+  openModal('txModal');
+}
+function openBdgModal(k){
+  const c=k?S.cats().find(x=>x.key===k):null;
+  document.getElementById('bdgModalTitle').textContent=c?'予算カテゴリを編集':'予算カテゴリを追加';
+  document.getElementById('bdgName').value=c?c.name:'';
+  document.getElementById('bdgAmt').value=c?(c.budget||''):'';
+  document.getElementById('bdgEditKey').value=k||'';
+  openModal('bdgModal');
+}
+function openAccModal(k){
+  const a=k?S.accs().find(x=>x.key===k):null;
+  document.getElementById('accModalTitle').textContent=a?'財布を編集':'財布を追加';
+  document.getElementById('accName').value=a?a.name:'';
+  document.getElementById('accInit').value=a?(a.initialBalance||''):'';
+  document.getElementById('accEditKey').value=k||'';
+  openModal('accModal');
+}
+
+// ---- SAVE TX ----
+document.getElementById('saveTxBtn').addEventListener('click',()=>{
+  const type=document.getElementById('txTypeVal').value;
+  const date=document.getElementById('txDate').value;
+  const amount=parseInt(document.getElementById('txAmt').value);
+  const category=document.getElementById('txCat').value;
+  const account=document.getElementById('txAcc').value;
+  const memo=document.getElementById('txMemo').value.trim();
+  if(!date||!amount||amount<=0||!category||!account){showToast('必須項目を入力してください');return;}
+  const txs=S.tx(); txs.push({id:genKey(),type,date,amount,category,account,memo});
+  S.sTx(txs); closeAllModals(); renderAll(); showToast('保存しました ✓');
+});
+
+// ---- SAVE BUDGET ----
+document.getElementById('saveBdgBtn').addEventListener('click',()=>{
+  const name=document.getElementById('bdgName').value.trim();
+  const budget=parseInt(document.getElementById('bdgAmt').value)||0;
+  const k=document.getElementById('bdgEditKey').value;
+  if(!name){showToast('カテゴリ名を入力してください');return;}
+  let cats=S.cats();
+  if(k) cats=cats.map(c=>c.key===k?{...c,name,budget}:c);
+  else cats.push({key:genKey(),name,budget});
+  S.sCats(cats); closeAllModals(); renderBudgetSettings(); renderAll(); showToast(k?'更新しました ✓':'追加しました ✓');
+});
+
+// ---- SAVE ACCOUNT ----
+document.getElementById('saveAccBtn').addEventListener('click',()=>{
+  const name=document.getElementById('accName').value.trim();
+  const initialBalance=parseInt(document.getElementById('accInit').value)||0;
+  const k=document.getElementById('accEditKey').value;
+  if(!name){showToast('財布の名前を入力してください');return;}
+  let accs=S.accs();
+  if(k) accs=accs.map(a=>a.key===k?{...a,name,initialBalance}:a);
+  else accs.push({key:genKey(),name,initialBalance});
+  S.sAccs(accs); closeAllModals(); renderAccSettings(); renderAll(); showToast(k?'更新しました ✓':'追加しました ✓');
+});
+
+// ---- CLOSE MODALS ----
+document.querySelectorAll('.close-modal').forEach(b=>b.addEventListener('click',closeAllModals));
+document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)closeAllModals();}));
+
+// ---- TYPE TOGGLE ----
+document.getElementById('typExpBtn').addEventListener('click',()=>{
+  document.getElementById('txTypeVal').value='expense';
+  document.getElementById('typExpBtn').className='type-btn exp';
+  document.getElementById('typIncBtn').className='type-btn';
+});
+document.getElementById('typIncBtn').addEventListener('click',()=>{
+  document.getElementById('txTypeVal').value='income';
+  document.getElementById('typIncBtn').className='type-btn inc';
+  document.getElementById('typExpBtn').className='type-btn';
+});
+
+// ---- TABS ----
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('.screen').forEach(x=>x.classList.remove('on'));
+  t.classList.add('on');
+  document.getElementById('tab-'+t.dataset.tab).classList.add('on');
+  if(t.dataset.tab==='budget') renderBudgetSettings();
+  if(t.dataset.tab==='settings') renderAccSettings();
+  if(t.dataset.tab==='graph') renderCharts();
+  if(t.dataset.tab==='history') renderHistory();
+}));
+
+// ---- MONTH NAV ----
+function shiftMonth(obj, dy, dm, cb){
+  obj.m+=dm; obj.y+=dy;
+  if(obj.m<0){obj.m=11;obj.y--;} if(obj.m>11){obj.m=0;obj.y++;}
+  cb();
+}
+document.getElementById('prevM').addEventListener('click',()=>shiftMonth({get m(){return vM},set m(v){vM=v},get y(){return vY},set y(v){vY=v}},0,-1,renderHome));
+document.getElementById('nextM').addEventListener('click',()=>shiftMonth({get m(){return vM},set m(v){vM=v},get y(){return vY},set y(v){vY=v}},0,1,renderHome));
+document.getElementById('hPrevM').addEventListener('click',()=>{ hM--; if(hM<0){hM=11;hY--;} renderHistory(); });
+document.getElementById('hNextM').addEventListener('click',()=>{ hM++; if(hM>11){hM=0;hY++;} renderHistory(); });
+document.getElementById('gPrevM').addEventListener('click',()=>{ gM--; if(gM<0){gM=11;gY--;} renderCharts(); });
+document.getElementById('gNextM').addEventListener('click',()=>{ gM++; if(gM>11){gM=0;gY++;} renderCharts(); });
+
+// ---- CHART TYPE TABS ----
+document.getElementById('ctExpBtn').addEventListener('click',()=>{
+  chartType='expense';
+  document.getElementById('ctExpBtn').className='ctab on';
+  document.getElementById('ctIncBtn').className='ctab';
+  renderPieChart();
+});
+document.getElementById('ctIncBtn').addEventListener('click',()=>{
+  chartType='income';
+  document.getElementById('ctIncBtn').className='ctab on';
+  document.getElementById('ctExpBtn').className='ctab';
+  renderPieChart();
+});
+
+// ---- FILTER CHIPS ----
+document.querySelectorAll('#filterChips .chip').forEach(c=>c.addEventListener('click',()=>{
+  document.querySelectorAll('#filterChips .chip').forEach(x=>x.classList.remove('on'));
+  c.classList.add('on'); hFilter=c.dataset.f; renderHistory();
+}));
+
+// ---- MISC ----
+document.getElementById('fab').addEventListener('click', openTxModal);
+document.getElementById('addBdgBtn').addEventListener('click',()=>openBdgModal(null));
+document.getElementById('addAccBtn').addEventListener('click',()=>openAccModal(null));
+document.getElementById('clearBtn').addEventListener('click',()=>{
+  if(confirm('すべての取引データを削除しますか？この操作は元に戻せません。')){
+    S.sTx([]); renderAll(); showToast('削除しました');
+  }
+});
+
+// ---- TOAST ----
+function showToast(msg){
+  const old=document.querySelector('.toast'); if(old)old.remove();
+  const t=document.createElement('div'); t.className='toast'; t.textContent=msg;
+  document.body.appendChild(t); setTimeout(()=>t.remove(),2200);
+}
+
+// ---- RENDER ALL ----
+function renderAll(){ renderHome(); renderHistory(); }
+
+// ---- INIT ----
+S.init(); renderAll();
+</script>
+
+</body>
+</html>
