@@ -81,6 +81,8 @@ body{display:flex;flex-direction:column;overflow:hidden}
 .tx-amt.expense{color:#b83232}.tx-amt.income{color:#1e6b3c}.tx-amt.transfer{color:#2a52a0}
 .tx-del{background:none;border:none;cursor:pointer;font-size:13px;padding:4px;opacity:.25;transition:opacity .15s;color:#b83232}
 .tx-del:hover{opacity:1}
+.tx-edit{background:none;border:none;cursor:pointer;font-size:14px;padding:4px;opacity:.3;transition:opacity .15s;color:#2c5f4a}
+.tx-edit:hover{opacity:1}
 
 /* FILTER CHIPS */
 .chips{display:flex;gap:6px;padding:8px 12px;overflow-x:auto;scrollbar-width:none}
@@ -289,6 +291,26 @@ body{display:flex;flex-direction:column;overflow:hidden}
       </div>
     </div>
     <div class="set-sec">
+      <div class="set-lbl">バックアップ</div>
+      <div class="set-card">
+        <div class="set-row">
+          <div class="set-l">
+            <div class="set-name">データをエクスポート</div>
+            <div class="set-sub">全データをJSONファイルで保存</div>
+          </div>
+          <button class="ibtn" id="exportBtn" style="font-size:14px;opacity:.7">保存</button>
+        </div>
+        <div class="set-row">
+          <div class="set-l">
+            <div class="set-name">データをインポート</div>
+            <div class="set-sub">バックアップから復元</div>
+          </div>
+          <button class="ibtn" id="importBtn" style="font-size:14px;opacity:.7">読込</button>
+        </div>
+      </div>
+      <input type="file" id="importFile" accept=".json" style="display:none">
+    </div>
+    <div class="set-sec">
       <div class="set-lbl">データ管理</div>
       <div class="set-card">
         <div class="set-row">
@@ -312,10 +334,11 @@ body{display:flex;flex-direction:column;overflow:hidden}
   <div class="sheet">
     <div class="sheet-handle"></div>
     <div class="sheet-hd">
-      <div class="sheet-title">取引を追加</div>
+      <div class="sheet-title" id="txModalTitle">取引を追加</div>
       <button class="sheet-x close-modal">✕</button>
     </div>
     <div class="sheet-bd">
+      <input type="hidden" id="txEditId">
       <div class="fg">
         <label class="fl">種類</label>
         <div class="type-row" style="grid-template-columns:1fr 1fr 1fr">
@@ -530,10 +553,14 @@ function renderTxRows(elId, txs){
       </div>
       <div class="tx-r">
         <div class="tx-amt ${amtClass}">${amtSign}${fmt(t.amount)}</div>
-        <button class="tx-del" data-id="${t.id}">✕</button>
+        <button class="tx-edit" data-id="${t.id}" title="編集">✎</button>
+        <button class="tx-del" data-id="${t.id}" title="削除">✕</button>
       </div>
     </div>`;
   }).join('');
+  el.querySelectorAll('.tx-edit').forEach(b=>b.addEventListener('click',()=>{
+    openTxModal(b.dataset.id);
+  }));
   el.querySelectorAll('.tx-del').forEach(b=>b.addEventListener('click',()=>{
     if(confirm('この取引を削除しますか？')){
       S.sTx(S.tx().filter(t=>t.id!==b.dataset.id));
@@ -742,16 +769,32 @@ function setTxType(type){
   document.getElementById('txAccLabel').textContent = type==='transfer'?'振替元':'アカウント';
 }
 
-function openTxModal(){
+function openTxModal(editId){
   const today=new Date().toISOString().split('T')[0];
-  document.getElementById('txDate').value=today;
-  document.getElementById('txAmt').value='';
-  document.getElementById('txMemo').value='';
   const accs=S.accs();
   document.getElementById('txCat').innerHTML=S.cats().map(c=>`<option value="${c.key}">${c.name}</option>`).join('');
   document.getElementById('txAcc').innerHTML=accs.map(a=>`<option value="${a.key}">${a.name}</option>`).join('');
   document.getElementById('txTrfTo').innerHTML=accs.map(a=>`<option value="${a.key}">${a.name}</option>`).join('');
-  setTxType('expense');
+
+  const existing = editId ? S.tx().find(t=>t.id===editId) : null;
+  document.getElementById('txEditId').value = editId||'';
+  document.getElementById('txModalTitle').textContent = existing?'取引を編集':'取引を追加';
+  document.getElementById('saveTxBtn').textContent = existing?'更新する':'保存する';
+
+  if(existing){
+    document.getElementById('txDate').value=existing.date;
+    document.getElementById('txAmt').value=existing.amount;
+    document.getElementById('txMemo').value=existing.memo||'';
+    setTxType(existing.type);
+    document.getElementById('txAcc').value=existing.account;
+    if(existing.type==='expense') document.getElementById('txCat').value=existing.category;
+    if(existing.type==='transfer') document.getElementById('txTrfTo').value=existing.trfTo||'';
+  } else {
+    document.getElementById('txDate').value=today;
+    document.getElementById('txAmt').value='';
+    document.getElementById('txMemo').value='';
+    setTxType('expense');
+  }
   openModal('txModal');
 }
 function openBdgModal(k){
@@ -773,6 +816,7 @@ function openAccModal(k){
 
 // ---- SAVE TX ----
 document.getElementById('saveTxBtn').addEventListener('click',()=>{
+  const editId=document.getElementById('txEditId').value;
   const type=document.getElementById('txTypeVal').value;
   const date=document.getElementById('txDate').value;
   const amount=parseInt(document.getElementById('txAmt').value);
@@ -784,8 +828,15 @@ document.getElementById('saveTxBtn').addEventListener('click',()=>{
   if(type==='expense'&&!category){showToast('カテゴリを選択してください');return;}
   if(type==='transfer'&&(!account||!trfTo)){showToast('振替元と振替先を選択してください');return;}
   if(type==='transfer'&&account===trfTo){showToast('振替元と振替先が同じです');return;}
-  const txs=S.tx(); txs.push({id:genKey(),type,date,amount,category,account,trfTo,memo});
-  S.sTx(txs); closeAllModals(); renderAll(); showToast('保存しました ✓');
+  let txs=S.tx();
+  if(editId){
+    txs=txs.map(t=>t.id===editId?{...t,type,date,amount,category,account,trfTo,memo}:t);
+    showToast('更新しました ✓');
+  } else {
+    txs.push({id:genKey(),type,date,amount,category,account,trfTo,memo});
+    showToast('保存しました ✓');
+  }
+  S.sTx(txs); closeAllModals(); renderAll();
 });
 
 // ---- SAVE BUDGET ----
@@ -867,9 +918,52 @@ document.querySelectorAll('#filterChips .chip').forEach(c=>c.addEventListener('c
 }));
 
 // ---- MISC ----
-document.getElementById('fab').addEventListener('click', openTxModal);
+document.getElementById('fab').addEventListener('click', ()=>openTxModal(null));
 document.getElementById('addBdgBtn').addEventListener('click',()=>openBdgModal(null));
 document.getElementById('addAccBtn').addEventListener('click',()=>openAccModal(null));
+
+// ---- EXPORT ----
+document.getElementById('exportBtn').addEventListener('click',()=>{
+  const data = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    transactions: S.tx(),
+    categories: S.cats(),
+    accounts: S.accs()
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const date = new Date().toISOString().slice(0,10);
+  a.href=url; a.download=`家計簿バックアップ_${date}.json`;
+  a.click(); URL.revokeObjectURL(url);
+  showToast('エクスポートしました ✓');
+});
+
+// ---- IMPORT ----
+document.getElementById('importBtn').addEventListener('click',()=>{
+  document.getElementById('importFile').click();
+});
+document.getElementById('importFile').addEventListener('change', e=>{
+  const file=e.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const data=JSON.parse(ev.target.result);
+      if(!data.transactions||!data.categories||!data.accounts) throw new Error('形式が不正です');
+      if(!confirm(`バックアップを復元しますか？\n現在のデータは上書きされます。\n\n取引: ${data.transactions.length}件\n財布: ${data.accounts.length}件\nカテゴリ: ${data.categories.length}件`)) return;
+      S.sTx(data.transactions);
+      S.sCats(data.categories);
+      S.sAccs(data.accounts);
+      renderAll(); renderAccSettings();
+      showToast('インポートしました ✓');
+    }catch(err){
+      showToast('読み込みに失敗しました');
+    }
+    e.target.value='';
+  };
+  reader.readAsText(file);
+});
 document.getElementById('clearBtn').addEventListener('click',()=>{
   if(confirm('すべての取引データを削除しますか？この操作は元に戻せません。')){
     S.sTx([]); renderAll(); showToast('削除しました');
